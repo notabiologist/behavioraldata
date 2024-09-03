@@ -3,7 +3,7 @@
 rm(list = ls())
 getwd()
 
-setwd("your directoru")
+setwd("your directory")
 dir()
 #function tranfrom data 
 data <-  read.csv("file.csv")
