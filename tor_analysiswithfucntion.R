@@ -3,10 +3,10 @@
 rm(list = ls())
 getwd()
 
-setwd("C:/Users/depha/OneDrive/Mahseer_behaviour_paper")
+setwd("your directoru")
 dir()
-#function tranfrom data @copilot
-data <-  read.csv("population1_vinitha_2months.csv")
+#function tranfrom data 
+data <-  read.csv("file.csv")
 head(data)
 names(data)
 str(data)
