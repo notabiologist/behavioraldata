@@ -1,4 +1,4 @@
-#
+# code for performing stepwise regression, calculating delta AIC and moving the data to csv
 
 rm(list = ls())
 getwd()
@@ -129,15 +129,28 @@ calculate_delta_aic <- function(models, null_model) {
         cat(delta_aic_values[[best_model_name]]$formula, "\n")
 }
 
-
-
-
-
-
-
-
-
-
+# Function to extract intercept estimate, p-value, significance, AIC, and formula
+                                                  
+extract_model_info <- function(model, model_name, delta_aic) {
+        summary_model <- summary(model)
+        intercept_estimate <- coef(summary_model)["(Intercept)", "Estimate"]
+        p_value <- coef(summary_model)["(Intercept)", "Pr(>|t|)"]
+        significance <- ifelse(p_value < 0.001, "***",
+                               ifelse(p_value < 0.01, "**",
+                                      ifelse(p_value < 0.05, "*", 
+                                             ifelse(p_value < 0.1, ".", " "))))
+        aic <- AIC(model)
+        formula <- paste(deparse(formula(model)), collapse = "")
+        list(
+                Model = model_name,
+                Formula = formula,
+                Intercept_Estimate = intercept_estimate,
+                P_Value = p_value,
+                Significance = significance,
+                AIC = aic,
+                Delta_AIC = delta_aic[model_name]
+        )
+}
 
 
 columns_to_transform <- c("Emergence.time", "Time.spent.in.outer.area..walls", "Time.spent.in.chamber.A", "Time.spent.in.front.of.the.gate")
@@ -161,58 +174,10 @@ for (col in names(data)) {
         }
 }
 
-# Function to perform stepwise regression to null model and saves the data to a list use this for analysis
-stepwise_to_null_models <- function(formula, family = gaussian, data) {
-        # Fit the full model
-        full_model <- glm(formula, family = family, data = data)
-        
-        # Initialize the current model as the full model
-        current_model <- full_model
-        
-        # List to store all models
-        models <- list(full_model = full_model)
-        
-        # Show summary of the full model
-        cat("Full Model:\n")
-        print(summary(current_model))
-        cat("\n")
-        
-        # Loop to remove variables one by one
-        while (length(coef(current_model)) > 1) {  # Continue until only intercept is left
-                if (length(coef(current_model)) == 2) {
-                        # If only one predictor left, remove it
-                        predictor_to_remove <- names(coef(current_model))[2]
-                } else {
-                        p_values <- summary(current_model)$coefficients[-1, 4]  # Get p-values for all predictors except intercept
-                        predictor_to_remove <- names(which.max(p_values))  # Get the name of the predictor with highest p-value
-                }
-                
-                # Update the formula to remove the selected predictor
-                current_model <- update(current_model, as.formula(paste(". ~ . -", predictor_to_remove)))
-                
-                # Store the updated model
-                models[[paste("model_after_removing", predictor_to_remove, sep = "_")]] <- current_model
-                
-                # Show the updated model
-                cat(paste("Removed:", predictor_to_remove, "\n"))
-                cat("Updated Model:\n")
-                print(summary(current_model))
-                cat("\n")
-        }
-        
-        # Fit the null model
-        null_model <- glm(reformulate("1", response = all.vars(formula)[1]), family = family, data = data)
-        cat("Final Null Model:\n")
-        print(summary(null_model))
-        
-        # Store the null model
-        models$null_model <- null_model
-        
-        return(models)
-}
 
 
-# Define your formula
+
+#  formula for full model
 formula <- Emergence.time ~ Time.spent.in.outer.area..walls + 
         Time.spent.in.front.of.the.gate + 
         Crossing.the.center + 
@@ -222,55 +187,6 @@ formula <- Emergence.time ~ Time.spent.in.outer.area..walls +
 
 # Call the function
 models <- stepwise_to_null_models(formula = formula, family = gaussian, data = data)
-
-
-
-# Function to calculate delta AIC
-
-
-calculate_delta_aic <- function(models, null_model) {
-        # Extract the null model AIC
-        null_aic <- AIC(null_model)
-        
-        # Initialize a list to store delta AIC values and formulas
-        delta_aic_values <- list()
-        
-        # Loop through each model in the models list
-        for (i in seq_along(models)) {
-                # Extract model and its formula
-                model <- models[[i]]
-                model_formula <- deparse(formula(model))
-                
-                # Calculate AIC for the model
-                model_aic <- AIC(model)
-                
-                # Calculate delta AIC
-                delta_aic <- model_aic - null_aic
-                
-                # Store delta AIC and formula
-                delta_aic_values[[paste("Model", i)]] <- list(
-                        formula = model_formula,
-                        delta_aic = delta_aic
-                )
-        }
-        
-        # Print delta AIC values and formulas for each model
-        cat("Delta AIC values for each model:\n")
-        for (name in names(delta_aic_values)) {
-                cat(paste(name, ": Delta AIC =", round(delta_aic_values[[name]]$delta_aic, 2), "\n"))
-                cat("Formula:\n")
-                cat(delta_aic_values[[name]]$formula, "\n\n")
-        }
-        
-        # Find the model with the lowest delta AIC
-        min_delta_aic <- min(sapply(delta_aic_values, function(x) x$delta_aic))
-        best_model_name <- names(which.min(sapply(delta_aic_values, function(x) x$delta_aic)))
-        
-        cat("\nModel with the lowest delta AIC:\n")
-        cat(paste(best_model_name, ": Delta AIC =", round(min_delta_aic, 2), "\n"))
-        cat("Formula:\n")
-        cat(delta_aic_values[[best_model_name]]$formula, "\n")
-}
 
 null_model <- glm(formula = Emergence.time ~ 1, family = gaussian, data = data)
 
@@ -306,27 +222,7 @@ aic_values <- sapply(models, AIC)
 # Calculate delta AIC, using the AIC of the null model as the baseline
 delta_aic <- aic_values - min(aic_values)
 
-# Function to extract intercept estimate, p-value, significance, AIC, and formula
-extract_model_info <- function(model, model_name, delta_aic) {
-        summary_model <- summary(model)
-        intercept_estimate <- coef(summary_model)["(Intercept)", "Estimate"]
-        p_value <- coef(summary_model)["(Intercept)", "Pr(>|t|)"]
-        significance <- ifelse(p_value < 0.001, "***",
-                               ifelse(p_value < 0.01, "**",
-                                      ifelse(p_value < 0.05, "*", 
-                                             ifelse(p_value < 0.1, ".", " "))))
-        aic <- AIC(model)
-        formula <- paste(deparse(formula(model)), collapse = "")
-        list(
-                Model = model_name,
-                Formula = formula,
-                Intercept_Estimate = intercept_estimate,
-                P_Value = p_value,
-                Significance = significance,
-                AIC = aic,
-                Delta_AIC = delta_aic[model_name]
-        )
-}
+
 
 # Extract information for each model including delta AIC
 model_info <- lapply(names(models), function(model_name) {
