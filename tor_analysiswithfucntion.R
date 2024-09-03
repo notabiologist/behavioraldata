@@ -255,6 +255,13 @@ write.csv(model_info_df, file = file_path, row.names = FALSE)
 cat("The model information has been saved to", file_path, "\n")
 
 
+# combining all the csv files together  example# Read the CSV files
+time_spent_data <- read.csv("Time.spent.in.outer.area..walls.csv")
+emergence_time_data <- read.csv("emergence_time_as_response.csv")
+# Combine the data frames
+combined_data <- rbind(time_spent_data, emergence_time_data)
+# Write the combined data to a new CSV file
+write.csv(combined_data, "combined_data.csv", row.names = FALSE)
 
 
 
