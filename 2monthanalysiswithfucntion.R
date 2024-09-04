@@ -178,7 +178,7 @@ calculate_delta_aic <- function(models) {
 
 
 # Function to extract intercept estimate, p-value, significance, AIC, and formula
-extract_model_info <- function(model, model_name, delta_aic) {
+extract_model_info2 <- function(model, model_name, delta_aic) {
         summary_model <- summary(model)
         intercept_estimate <- coef(summary_model)["(Intercept)", "Estimate"]
         p_value <- coef(summary_model)["(Intercept)", "Pr(>|t|)"]
@@ -200,7 +200,7 @@ extract_model_info <- function(model, model_name, delta_aic) {
 }
 
 
-extract_model_info <- function(model, model_name, delta_aic) {
+extract_model_info3 <- function(model, model_name, delta_aic) {
         summary_model <- summary(model)
         
         # For GLMs, the coefficient matrix is in summary_model$coefficients
@@ -233,7 +233,51 @@ extract_model_info <- function(model, model_name, delta_aic) {
         )
 }
 
-
+# extract function that work for p t and z values
+extract_model_info <- function(model, model_name, delta_aic) {
+        summary_model <- summary(model)
+        
+        # Get the coefficient matrix
+        coef_matrix <- try(coef(summary_model), silent = TRUE)
+        if (inherits(coef_matrix, "try-error")) {
+                coef_matrix <- summary_model$coefficients
+        }
+        
+        if ("(Intercept)" %in% rownames(coef_matrix)) {
+                intercept_estimate <- coef_matrix["(Intercept)", "Estimate"]
+                
+                # Check for both Pr(>|t|) and Pr(>|z|)
+                if ("Pr(>|t|)" %in% colnames(coef_matrix)) {
+                        p_value <- coef_matrix["(Intercept)", "Pr(>|t|)"]
+                } else if ("Pr(>|z|)" %in% colnames(coef_matrix)) {
+                        p_value <- coef_matrix["(Intercept)", "Pr(>|z|)"]
+                } else {
+                        p_value <- NA
+                }
+                
+                significance <- ifelse(p_value < 0.001, "***",
+                                       ifelse(p_value < 0.01, "**",
+                                              ifelse(p_value < 0.05, "*", 
+                                                     ifelse(p_value < 0.1, ".", " "))))
+        } else {
+                intercept_estimate <- NA
+                p_value <- NA
+                significance <- NA
+        }
+        
+        aic <- tryCatch(AIC(model), error = function(e) NA)
+        formula <- paste(deparse(formula(model)), collapse = "")
+        
+        list(
+                Model = model_name,
+                Formula = formula,
+                Intercept_Estimate = intercept_estimate,
+                P_Value = p_value,
+                Significance = significance,
+                AIC = aic,
+                Delta_AIC = delta_aic[model_name]
+        )
+}
 
 
 
@@ -302,7 +346,7 @@ aic_values <- sapply(models, AIC)
 delta_aic <- aic_values - min(aic_values)
 
 
-
+ 
 # Extract information for each model including delta AIC
 model_info <- lapply(names(models), function(model_name) {
         extract_model_info(models[[model_name]], model_name, delta_aic)
@@ -710,7 +754,7 @@ write.csv(model_info_df, file = file_path, row.names = FALSE)
 cat("The model information has been saved to", file_path, "\n")
 
 
-# combining all the csv files together  example# Read the CSV files
+# combining all the csv files together  example
 
 emergence_time_data <- read.csv("Response_emergence_time.csv")
 time_spent_outer_area <- read.csv("Response_Time.spent.in.outer.area..walls.csv")
@@ -737,10 +781,572 @@ c <- read.csv("2month_fishmodels.csv")
 View(c)
   
 
+## population nine month
+
+data2 <- read.csv("population1_8_month.csv")
+
+str(data2)
+summary(data2)
+head(data2)
+
+columns_to_transform <- c("Emergence.time", "Time.spent.in.outer.area", "Time.spent.in.chamber.A", "Time.spent.in.front.of.the.gate")
+
+data2 <- sqrt_transform2(data2, columns_to_transform)
+
+
+# Apply Shapiro-Wilk test to all columns in the dataframe
+for (col in names(data2)) {
+        # Check if the column contains numeric data (Shapiro-Wilk test requires numeric input)
+        if (is.numeric(data2[[col]])) {
+                # Perform the Shapiro-Wilk test
+                test_result <- shapiro.test(data2[[col]])
+                
+                # Print the results
+                cat("Shapiro-Wilk normality test for", col, ":\n")
+                print(test_result)
+                cat("\n")
+        } else {
+                cat("Column", col, "is not numeric and cannot be tested.\n")
+        }
+}
+
+formula8 <- Emergence.time ~ Time.spent.in.outer.area + 
+        Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement + 
+        Surfacing + 
+        Chamber.switching
+
+
+models <- stepwise_to_null_models(formula = formula8, family = gaussian, data = data2)
+calculate_delta_aic(models)
+
+
+# Extract AIC for each model
+aic_values <- sapply(models, AIC)
+
+# Calculate delta AIC, using the AIC of the null model as the baseline
+delta_aic <- aic_values - min(aic_values)
+
+
+
+# Extract information for each model including delta AIC
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+# Convert the list to a data frame
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
 
 
 
 
+# Convert list columns to character
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+# Define the file path
+file_path <- "8month_Response_emergence_time.csv"
+
+# Write the data frame to a CSV file
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+# Print a message to confirm the file has been saved
+cat("The model information has been saved to", file_path, "\n")
+
+
+#second model
+
+formula9 <- Time.spent.in.outer.area ~ Emergence.time + 
+        Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement + 
+        Surfacing + 
+        Chamber.switching
+
+
+models <- stepwise_to_null_models(formula = formula9, family = gaussian, data = data2)
+calculate_delta_aic(models)
+
+
+# Extract AIC for each model
+aic_values <- sapply(models, AIC)
+
+# Calculate delta AIC, using the AIC of the null model as the baseline
+delta_aic <- aic_values - min(aic_values)
 
 
 
+# Extract information for each model including delta AIC
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+# Convert the list to a data frame
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+
+
+
+# Convert list columns to character
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+# Define the file path
+file_path <- "8month_Response_Time.spent.in.outer.area.csv"
+
+# Write the data frame to a CSV file
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+# Print a message to confirm the file has been saved
+cat("The model information has been saved to", file_path, "\n")
+
+
+
+#third model
+
+
+formula10 <- Time.spent.in.front.of.the.gate ~ Emergence.time + 
+        Time.spent.in.outer.area + 
+        Crossing.the.center + 
+        Vertical.movement + 
+        Surfacing + 
+        Chamber.switching
+models <- stepwise_to_null_models(formula = formula10, family = gaussian, data = data2)
+calculate_delta_aic(models)
+
+
+# Extract AIC for each model
+aic_values <- sapply(models, AIC)
+
+# Calculate delta AIC, using the AIC of the null model as the baseline
+delta_aic <- aic_values - min(aic_values)
+
+
+
+# Extract information for each model including delta AIC
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+# Convert the list to a data frame
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+
+
+
+# Convert list columns to character
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+# Define the file path
+file_path <- "8month_Response_Time.spent.in.front.of.the.gate.csv"
+
+# Write the data frame to a CSV file
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+# Print a message to confirm the file has been saved
+cat("The model information has been saved to", file_path, "\n")
+
+
+#fourth model
+formula11 <- Crossing.the.center ~ Emergence.time + 
+        Time.spent.in.outer.area + Time.spent.in.front.of.the.gate + 
+        Vertical.movement + 
+        Surfacing + 
+        Chamber.switching
+models <- stepwise_to_null_models(formula = formula11, family = poisson, data = data2)  
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "8month_Response_Crossing.the.center.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#fifth model
+
+formula12 <-  Vertical.movement ~ Emergence.time + 
+        Time.spent.in.outer.area + Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Surfacing + 
+        Chamber.switching
+models <- stepwise_to_null_models(formula = formula12, family = poisson, data = data2)  
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "8month_Response_Vertical.movement.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#sixth model
+
+formula13 <-  Surfacing ~ Emergence.time + 
+        Time.spent.in.outer.area + Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement+ 
+        Chamber.switching
+models <- stepwise_to_null_models(formula = formula13, family = poisson, data = data2)  
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "8month_Response_Surfacing.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#seventh model
+formula14 <-  Chamber.switching ~ Emergence.time + 
+        Time.spent.in.outer.area + Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement+ 
+        Surfacing
+
+models <- stepwise_to_null_models(formula = formula14, family = poisson, data = data2)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "8month_Response_Chamber.switching.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+
+# combining all the csv files together  example
+
+emergence_time_data <- read.csv("8month_Response_emergence_time.csv")
+time_spent_outer_area <- read.csv("8month_Response_Time.spent.in.outer.area.csv" )
+time_spent_infront_of_gate <- read.csv("8month_Response_Time.spent.in.outer.area.csv")
+vertical_movement  <- read.csv("8month_Response_Vertical.movement.csv")
+crossing_center <- read.csv("8month_Response_Crossing.the.center.csv"   )
+chamberswitching <- read.csv("8month_Response_Chamber.switching.csv"  )
+surfacing  <- read.csv("8month_Response_Surfacing.csv")
+
+
+# Combine the data frames
+combined_data <- rbind(
+        emergence_time_data,
+        time_spent_outer_area,
+        time_spent_infront_of_gate,
+        vertical_movement,
+        crossing_center,
+        chamberswitching,
+        surfacing)
+
+# Write the combined data to a new CSV file
+write.csv(combined_data, "8month_fishmodels.csv", row.names = FALSE)
+e <- read.csv("8month_fishmodels.csv")
+View(e)
+
+
+
+#lonovala population
+
+data3 <- read.csv( "lonavala_153fish.csv")
+names(data3)
+str(data3)
+summary(data3)
+columns_to_transform <- c("Emergence.time", "Time.spent.in.outer.area", "Time.spent.in.chamber.A", "Time.spent.in.front.of.the.gate")
+
+data <- sqrt_transform2(data3, columns_to_transform)
+
+
+# Apply Shapiro-Wilk test to all columns in the dataframe
+for (col in names(data)) {
+        # Check if the column contains numeric data (Shapiro-Wilk test requires numeric input)
+        if (is.numeric(data[[col]])) {
+                # Perform the Shapiro-Wilk test
+                test_result <- shapiro.test(data[[col]])
+                
+                # Print the results
+                cat("Shapiro-Wilk normality test for", col, ":\n")
+                print(test_result)
+                cat("\n")
+        } else {
+                cat("Column", col, "is not numeric and cannot be tested.\n")
+        }
+}
+
+
+#15 model
+formula15 <- Emergence.time  ~  Time.spent.in.outer.area + Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement+ 
+        Surfacing + Chamber.switching
+
+models <- stepwise_to_null_models(formula = formula15, family = gaussian, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "lonovala_Response_emergence_time.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+
+#16 model
+formula16 <-  Time.spent.in.outer.area  ~ Emergence.time + Time.spent.in.front.of.the.gate + 
+        Crossing.the.center + 
+        Vertical.movement+ 
+        Surfacing + Chamber.switching
+
+models <- stepwise_to_null_models(formula = formula16, family = gaussian, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "lonovala_Response_ Time.spent.in.outer.area .csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#model17 
+formula17 <-  Time.spent.in.front.of.the.gate  ~ Emergence.time + Time.spent.in.outer.area + 
+        Crossing.the.center + 
+        Vertical.movement+ 
+        Surfacing + Chamber.switching
+
+models <- stepwise_to_null_models(formula = formula17, family = gaussian, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "lonovala_Response_ Time.spent.in.front.of.the.gate.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#model18
+formula18 <-  Crossing.the.center  ~ Emergence.time + Time.spent.in.outer.area + 
+        Time.spent.in.front.of.the.gate + 
+        Vertical.movement+ 
+        Surfacing + Chamber.switching
+models <- stepwise_to_null_models(formula = formula18, family = poisson, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "lonovala_Response_ Crossing.the.center.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#model19
+model19 <-  Vertical.movement  ~ Emergence.time + Time.spent.in.outer.area + 
+        Time.spent.in.front.of.the.gate + 
+        Crossing.the.center+ 
+        Surfacing + Chamber.switching
+models <- stepwise_to_null_models(formula = model19, family = poisson, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+
+file_path <- "lonovala_Response_ Vertical.movement.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+
+cat("The model information has been saved to", file_path, "\n")
+
+#model20
+model20 <-  Surfacing  ~ Emergence.time + Time.spent.in.outer.area + 
+        Time.spent.in.front.of.the.gate + 
+        Crossing.the.center+ 
+        Vertical.movement + Chamber.switching
+models <- stepwise_to_null_models(formula = model20, family = poisson, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+file_path <- "lonovala_Response_ Surfacing.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+cat("The model information has been saved to", file_path, "\n")
+
+
+#model21
+
+model21 <-  Chamber.switching  ~ Emergence.time + Time.spent.in.outer.area + 
+        Time.spent.in.front.of.the.gate + 
+        Crossing.the.center+ 
+        Vertical.movement + Surfacing
+models <- stepwise_to_null_models(formula = model21, family = poisson, data = data3)
+calculate_delta_aic(models)
+aic_values <- sapply(models, AIC)
+delta_aic <- aic_values - min(aic_values)
+model_info <- lapply(names(models), function(model_name) {
+        extract_model_info(models[[model_name]], model_name, delta_aic)
+})
+model_info_df <- do.call(rbind, model_info)
+model_info_df <- data.frame(model_info_df, row.names = NULL)
+model_info_df <- data.frame(lapply(model_info_df, function(col) {
+        if (is.list(col)) {
+                sapply(col, function(x) paste(x, collapse = ", "))
+        } else {
+                col
+        }
+}), stringsAsFactors = FALSE)
+file_path <- "lonovala_Response_ Chamber.switching.csv"
+write.csv(model_info_df, file = file_path, row.names = FALSE)
+cat("The model information has been saved to", file_path, "\n")
