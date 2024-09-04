@@ -129,6 +129,100 @@ calculate_delta_aic <- function(models, null_model) {
         cat(delta_aic_values[[best_model_name]]$formula, "\n")
 }
 
+
+extract_model_info <- function(model, model_name, delta_aic) {
+        summary_model <- summary(model)
+        
+        # Get the coefficient matrix
+        coef_matrix <- try(coef(summary_model), silent = TRUE)
+        if (inherits(coef_matrix, "try-error")) {
+                coef_matrix <- summary_model$coefficients
+        }
+        
+        if ("(Intercept)" %in% rownames(coef_matrix)) {
+                intercept_estimate <- coef_matrix["(Intercept)", "Estimate"]
+                
+                # Check for both Pr(>|t|) and Pr(>|z|)
+                if ("Pr(>|t|)" %in% colnames(coef_matrix)) {
+                        p_value <- coef_matrix["(Intercept)", "Pr(>|t|)"]
+                } else if ("Pr(>|z|)" %in% colnames(coef_matrix)) {
+                        p_value <- coef_matrix["(Intercept)", "Pr(>|z|)"]
+                } else {
+                        p_value <- NA
+                }
+                
+                significance <- ifelse(p_value < 0.001, "***",
+                                       ifelse(p_value < 0.01, "**",
+                                              ifelse(p_value < 0.05, "*", 
+                                                     ifelse(p_value < 0.1, ".", " "))))
+        } else {
+                intercept_estimate <- NA
+                p_value <- NA
+                significance <- NA
+        }
+        
+        aic <- tryCatch(AIC(model), error = function(e) NA)
+        formula <- paste(deparse(formula(model)), collapse = "")
+        
+        list(
+                Model = model_name,
+                Formula = formula,
+                Intercept_Estimate = intercept_estimate,
+                P_Value = p_value,
+                Significance = significance,
+                AIC = aic,
+                Delta_AIC = delta_aic[model_name]
+        )
+}
+
+
+# function for calculating  Delta AIC
+calculate_delta_aic <- function(models) {
+        # Extract AIC values for all models
+        aic_values <- sapply(models, AIC)
+        
+        # Find the model with the lowest AIC
+        min_aic <- min(aic_values)
+        best_model_index <- which.min(aic_values)
+        
+        # Initialize a list to store delta AIC values and formulas
+        delta_aic_values <- list()
+        
+        # Loop through each model in the models list
+        for (i in seq_along(models)) {
+                # Extract model and its formula
+                model <- models[[i]]
+                model_formula <- deparse(formula(model))
+                
+                # Calculate delta AIC relative to the best model
+                delta_aic <- aic_values[i] - min_aic
+                
+                # Store delta AIC and formula
+                delta_aic_values[[paste("Model", i)]] <- list(
+                        formula = model_formula,
+                        delta_aic = delta_aic
+                )
+        }
+        
+        # Print delta AIC values and formulas for each model
+        cat("Delta AIC values for each model:\n")
+        for (name in names(delta_aic_values)) {
+                cat(paste(name, ": Delta AIC =", round(delta_aic_values[[name]]$delta_aic, 2), "\n"))
+                cat("Formula:\n")
+                cat(delta_aic_values[[name]]$formula, "\n\n")
+        }
+        
+        # Print the best model based on AIC
+        cat("\nModel with the lowest AIC:\n")
+        cat(paste("Model", best_model_index, ": AIC =", round(min_aic, 2), "\n"))
+        cat("Formula:\n")
+        cat(delta_aic_values[[paste("Model", best_model_index)]]$formula, "\n")
+}
+
+
+
+                                                  
+
 # Function to extract intercept estimate, p-value, significance, AIC, and formula
                                                   
 extract_model_info <- function(model, model_name, delta_aic) {
@@ -190,7 +284,7 @@ models <- stepwise_to_null_models(formula = formula, family = gaussian, data = d
 
 null_model <- glm(formula = Emergence.time ~ 1, family = gaussian, data = data)
 
-firstmodel <- calculate_delta_aic(models, null_model)
+firstmodel <- calculate_delta_aic(models)
 
 
 
@@ -200,21 +294,6 @@ firstmodel <- calculate_delta_aic(models, null_model)
 # Function to extract intercept estimate, p-value, significance, AIC, and delta AIC
 
 
-
-
-##these lines work
-
-# List of models with consistent names
-models <- list(
-        full_model = glm(Emergence.time ~ Time.spent.in.outer.area..walls + Time.spent.in.front.of.the.gate + Crossing.the.center + Vertical.movement + Surfacing + Chamber.switching, family = gaussian, data = data),
-        model_after_removing_Vertical.movement = glm(Emergence.time ~ Time.spent.in.outer.area..walls + Time.spent.in.front.of.the.gate + Crossing.the.center + Surfacing + Chamber.switching, family = gaussian, data = data),
-        model_after_removing_Surfacing = glm(Emergence.time ~ Time.spent.in.outer.area..walls + Time.spent.in.front.of.the.gate + Crossing.the.center + Chamber.switching, family = gaussian, data = data),
-        model_after_removing_Chamber.switching = glm(Emergence.time ~ Time.spent.in.outer.area..walls + Time.spent.in.front.of.the.gate + Crossing.the.center, family = gaussian, data = data),
-        model_after_removing_Time.spent.in.front.of.the.gate = glm(Emergence.time ~ Time.spent.in.outer.area..walls + Crossing.the.center, family = gaussian, data = data),
-        model_after_removing_Crossing.the.center = glm(Emergence.time ~ Time.spent.in.outer.area..walls, family = gaussian, data = data),
-        model_after_removing_Time.spent.in.outer.area..walls = glm(Emergence.time ~ 1, family = gaussian, data = data),
-        null_model = glm(Emergence.time ~ 1, family = gaussian, data = data)
-)
 
 # Extract AIC for each model
 aic_values <- sapply(models, AIC)
@@ -262,9 +341,6 @@ emergence_time_data <- read.csv("emergence_time_as_response.csv")
 combined_data <- rbind(time_spent_data, emergence_time_data)
 # Write the combined data to a new CSV file
 write.csv(combined_data, "combined_data.csv", row.names = FALSE)
-
-
-
 
 
 
